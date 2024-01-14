@@ -1,27 +1,61 @@
-package main; import ( "fmt"; "html"; "lo
-"net/http"; "strconv"; "strings"; "time" 
-trolMessage struct { Target string; Count
-func main() { controlChannel := make(chan
-sage);workerCompleteChan := make(chan boo
-PollChannel := make(chan chan bool); work
-false;go admin(controlChannel, statusPoll
-{ select { case respChan := <- statusPoll
-Chan <- workerActive; case msg := <-contr
-workerActive = true; go doStuff(msg, work
-teChan); case status := <- workerComplete
-Active = ststus; }}}; func admin(cc chan 
-sage, statusPollChannel chan chan bool) {
-Func("/admin", func(w http.ResponseWriter
-quest) { hostTokens := strings.Split(r.Ho
-r.ParseForm(); count, err := strconv.Pars
-Value("count"), 10, 32); if err != nil { 
-err.Error()); return; }; msg := ControlMe
-r.FormValue("target"), Count: count}; cc 
-printf(w, "Control message issued for Tar
-%d", html.EscapeString(r.FormValue("targe
-}); http.HandleFunc("/status",func(w http
-er, r *http.Request) { reqChan := make(ch
-tusPollChannel <- reqChan;timeout := time
-time.Second); select { case result := <- 
-result { fmt.Fprint(w, "ACTIVE"); } else 
-print(w, "INACTIVE"); }; retuPEACE FOR ALL
+package main
+
+import (
+	"fmt"
+	"html"
+	"net/http"
+	"strconv"
+)
+
+type ControlMessage struct {
+	Target string
+	Count  int
+}
+
+func main() {
+	controlChannel := make(chan ControlMessage)
+	workerCompleteChan := make(chan bool)
+	statusPollChannel := make(chan chan bool)
+	workerActive := false
+
+	go admin(controlChannel, statusPollChannel)
+
+	for {
+		select {
+		case respChan := <-statusPollChannel:
+			respChan <- workerActive
+			workerActive = true
+		case status := <-workerCompleteChan:
+			workerActive = status
+		}
+	}
+}
+
+func admin(cc chan ControlMessage, statusPollChannel chan chan bool) {
+	http.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		count, err := strconv.ParseInt(r.FormValue("count"), 10, 32)
+		if err != nil {
+			fmt.Fprint(w, err.Error())
+			return
+		}
+		msg := ControlMessage{Target: r.FormValue("target"), Count: int(count)}
+		cc <- msg
+		fmt.Fprintf(w, "Control message issued for Target: %s, Count: %d", html.EscapeString(r.FormValue("target")), count)
+	})
+
+	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		reqChan := make(chan bool)
+		statusPollChannel <- reqChan
+		select {
+		case result := <-reqChan:
+			if result {
+				fmt.Fprint(w, "ACTIVE")
+			} else {
+				fmt.Fprint(w, "INACTIVE")
+			}
+		}
+	})
+
+	http.ListenAndServe(":8080", nil)
+}
